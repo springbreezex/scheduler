@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schedule Calendar</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --text: #1c1f24;
+    --muted: #6b7280;
+    --border: #e1e4ea;
+    --accent: #2563eb;
+    --today: #dc2626;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1d2026;
+      --text: #e8eaee;
+      --muted: #9aa1ad;
+      --border: #2d323b;
+      --accent: #5b8cff;
+      --today: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "Noto Sans JP", sans-serif;
+    line-height: 1.4;
+  }
+  .app { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px 24px;
+    align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .nav { display: flex; align-items: center; gap: 8px; }
+  .nav h1 { font-size: 1.35rem; margin: 0 12px; min-width: 9ch; text-align: center; }
+  button {
+    font: inherit; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, .switch input:focus-visible + .slider { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .nav .arrow { width: 38px; padding: 6px 0; font-size: 1.1rem; }
+
+  .tz { display: flex; align-items: center; gap: 10px; font-size: .92rem; color: var(--muted); }
+  .tz .on { color: var(--text); font-weight: 600; }
+  .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .slider {
+    position: absolute; inset: 0; cursor: pointer;
+    background: var(--border); border-radius: 24px; transition: background .15s;
+  }
+  .slider::before {
+    content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .15s;
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+
+  #status { min-height: 1.3em; font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
+  #status.error { color: var(--today); }
+
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .weekday {
+    text-align: center; font-size: .8rem; font-weight: 600;
+    color: var(--muted); padding: 6px 0;
+  }
+  .cell {
+    position: relative;
+    min-height: 104px; padding: 6px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .cell.other { opacity: .55; }
+  .cell .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 24px; height: 24px; padding: 0 4px;
+    font-size: .85rem; font-weight: 600; border-radius: 12px;
+  }
+  .cell.today { box-shadow: 0 0 0 2px var(--today); }
+  .cell.today .num { background: var(--today); color: #fff; }
+  .events { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+  .ev { font-size: .78rem; overflow-wrap: anywhere; }
+
+  @media (max-width: 640px) {
+    .app { padding: 10px; }
+    .grid { gap: 2px; }
+    .cell { min-height: 74px; padding: 3px; border-radius: 6px; }
+    .ev { font-size: .66rem; }
+    .nav h1 { font-size: 1.1rem; margin: 0 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="nav">
+      <button id="prev" class="arrow" aria-label="Previous month">&#8249;</button>
+      <h1 id="title" aria-live="polite"></h1>
+      <button id="next" class="arrow" aria-label="Next month">&#8250;</button>
+      <button id="todayBtn">Today</button>
+    </div>
+    <div class="tz">
+      <span id="lblWritten">Written time (GMT+8)</span>
+      <label class="switch" title="Switch between the time written in the sheet and your machine's time">
+        <input type="checkbox" id="tzSwitch" aria-label="Show times in my machine's time zone">
+        <span class="slider"></span>
+      </label>
+      <span id="lblLocal">My machine time</span>
+    </div>
+  </header>
+  <div id="status">Loading schedule…</div>
+  <div class="grid" id="weekdays"></div>
+  <div class="grid" id="days"></div>
+</div>
+
+<script>
+// ==== LOGIC ====
+const SHEET_ID = '17AcX0UeMU1S5UJJ5amw5gSDvbgm0F1CsSjEXfNJGQd8';
+const SHEET_NAME = 'Schedule';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+  '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME);
+const SOURCE_OFFSET_HOURS = 8;       // times in the sheet are GMT+8
+const DEFAULT_COLOR = '#3b82f6';     // used when a row has an event but no colour
+
+function parseCsv(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+      } else { field += c; }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function normalizeColor(v) {
+  v = (v || '').trim().replace(/^#/, '');
+  return /^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? '#' + v.toLowerCase() : null;
+}
+
+function toNumber(v) {
+  v = (v == null ? '' : String(v)).trim();
+  if (v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+// Turns CSV rows (first row = column names) into entry objects.
+function toEntries(rows) {
+  if (!rows.length) return [];
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const col = name => header.indexOf(name.toLowerCase());
+  const iY = col('Year'), iMo = col('Month'), iD = col('Day'),
+        iH = col('Hour'), iMi = col('Minute'), iEv = col('Event'),
+        iC = col('Web color code'), iCh = col('Announcement Channel');
+  if ([iY, iMo, iD].some(i => i < 0)) throw new Error('Year/Month/Day columns not found in the "Schedule" worksheet');
+
+  const entries = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const year = toNumber(row[iY]), month = toNumber(row[iMo]), day = toNumber(row[iD]);
+    if ([year, month, day].some(n => n === null || Number.isNaN(n))) continue;
+    const hour = iH >= 0 ? toNumber(row[iH]) : null;
+    const minute = iMi >= 0 ? toNumber(row[iMi]) : null;
+    const hasTime = hour !== null && !Number.isNaN(hour);
+    entries.push({
+      year, month, day,
+      hour: hasTime ? hour : null,
+      minute: hasTime ? (minute === null || Number.isNaN(minute) ? 0 : minute) : null,
+      event: iEv >= 0 ? (row[iEv] || '').trim() : '',
+      color: iC >= 0 ? normalizeColor(row[iC]) : null,
+      channel: iCh >= 0 ? (row[iCh] || '').trim() : ''
+    });
+  }
+  return entries;
+}
+
+// Where an entry appears: 'written' keeps the sheet's GMT+8 values,
+// 'local' converts timed entries to the machine's time zone (the day may shift).
+// Entries without a time are all-day marks and never shift.
+function placeEntry(e, mode) {
+  if (e.hour === null || mode === 'written') {
+    return { year: e.year, month: e.month, day: e.day, hour: e.hour, minute: e.minute };
+  }
+  const d = new Date(Date.UTC(e.year, e.month - 1, e.day, e.hour - SOURCE_OFFSET_HOURS, e.minute));
+  return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes() };
+}
+
+function todayParts(mode, nowMs) {
+  nowMs = nowMs === undefined ? Date.now() : nowMs;
+  if (mode === 'written') {
+    const d = new Date(nowMs + SOURCE_OFFSET_HOURS * 3600e3);
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+  }
+  const d = new Date(nowMs);
+  return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+}
+
+const dayKey = (y, m, d) => y + '-' + m + '-' + d;
+const pad2 = n => String(n).padStart(2, '0');
+
+function groupByDay(entries, mode) {
+  const map = new Map();
+  for (const e of entries) {
+    const p = placeEntry(e, mode);
+    const k = dayKey(p.year, p.month, p.day);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push({ ...p, event: e.event, color: e.color });
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => {
+      const ta = a.hour === null ? -1 : a.hour * 60 + a.minute;
+      const tb = b.hour === null ? -1 : b.hour * 60 + b.minute;
+      return ta - tb;
+    });
+  }
+  return map;
+}
+
+function eventLabel(e) {
+  if (e.hour === null) return e.event;
+  const t = pad2(e.hour) + ':' + pad2(e.minute);
+  return e.event ? t + ' - ' + e.event : t;
+}
+
+function cellColor(list) {
+  const explicit = list.find(e => e.color);
+  if (explicit) return explicit.color;
+  return list.some(e => e.event || e.hour !== null) ? DEFAULT_COLOR : null;
+}
+
+function readableTextColor(hex) {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.4 ? '#111111' : '#ffffff';
+}
+// ==== UI ====
+
+const state = {
+  entries: [],
+  mode: 'written',
+  year: 0,
+  month: 0,
+  byDay: new Map(),
+  loaded: false
+};
+
+const $ = id => document.getElementById(id);
+
+function loadPref() {
+  try { return localStorage.getItem('scheduleTimeMode'); } catch (e) { return null; }
+}
+function savePref(v) {
+  try { localStorage.setItem('scheduleTimeMode', v); } catch (e) { /* ignore */ }
+}
+
+function machineZoneLabel() {
+  const off = -new Date().getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const a = Math.abs(off);
+  const hh = Math.floor(a / 60), mm = a % 60;
+  let name = '';
+  try { name = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* ignore */ }
+  return 'My machine time (UTC' + sign + hh + (mm ? ':' + pad2(mm) : '') + (name ? ', ' + name : '') + ')';
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  $('tzSwitch').checked = mode === 'local';
+  $('lblLocal').textContent = machineZoneLabel();
+  $('lblWritten').classList.toggle('on', mode === 'written');
+  $('lblLocal').classList.toggle('on', mode === 'local');
+  savePref(mode);
+  state.byDay = groupByDay(state.entries, mode);
+  render();
+}
+
+function goToToday() {
+  const t = todayParts(state.mode);
+  state.year = t.year;
+  state.month = t.month;
+  render();
+}
+
+function shiftMonth(delta) {
+  let m = state.month + delta, y = state.year;
+  while (m < 1) { m += 12; y--; }
+  while (m > 12) { m -= 12; y++; }
+  state.year = y; state.month = m;
+  render();
+}
+
+function render() {
+  const { year, month } = state;
+  $('title').textContent = new Date(year, month - 1, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const today = todayParts(state.mode);
+  const startDow = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const cells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < cells; i++) {
+    const d = new Date(year, month - 1, 1 - startDow + i);
+    const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    if (m !== month) cell.classList.add('other');
+    if (y === today.year && m === today.month && day === today.day) cell.classList.add('today');
+
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = day;
+    cell.appendChild(num);
+
+    const list = state.byDay.get(dayKey(y, m, day));
+    if (list && list.length) {
+      const color = cellColor(list);
+      if (color) {
+        cell.style.background = color;
+        cell.style.borderColor = color;
+        cell.style.color = readableTextColor(color);
+      }
+      const box = document.createElement('div');
+      box.className = 'events';
+      for (const e of list) {
+        const label = eventLabel(e);
+        if (!label) continue;
+        const line = document.createElement('div');
+        line.className = 'ev';
+        line.textContent = label;
+        box.appendChild(line);
+      }
+      cell.appendChild(box);
+    }
+    frag.appendChild(cell);
+  }
+  $('days').replaceChildren(frag);
+}
+
+function setStatus(text, isError) {
+  const el = $('status');
+  el.textContent = text;
+  el.classList.toggle('error', !!isError);
+}
+
+async function loadSheet() {
+  try {
+    const res = await fetch(CSV_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const rows = parseCsv(await res.text());
+    state.entries = toEntries(rows);
+    state.byDay = groupByDay(state.entries, state.mode);
+    state.loaded = true;
+    setStatus('Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    render();
+  } catch (err) {
+    setStatus('Could not load the schedule (' + err.message + '). Check that the sheet is shared as "anyone with the link can view".', true);
+  }
+}
+
+function init() {
+  const wk = $('weekdays');
+  ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(n => {
+    const d = document.createElement('div');
+    d.className = 'weekday';
+    d.textContent = n;
+    wk.appendChild(d);
+  });
+
+  $('prev').addEventListener('click', () => shiftMonth(-1));
+  $('next').addEventListener('click', () => shiftMonth(1));
+  $('todayBtn').addEventListener('click', goToToday);
+  $('tzSwitch').addEventListener('change', e => setMode(e.target.checked ? 'local' : 'written'));
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowLeft') shiftMonth(-1);
+    if (e.key === 'ArrowRight') shiftMonth(1);
+  });
+
+  const saved = loadPref();
+  state.mode = saved === 'local' ? 'local' : 'written';
+  const t = todayParts(state.mode);
+  state.year = t.year;
+  state.month = t.month;
+  setMode(state.mode);
+
+  loadSheet();
+  setInterval(loadSheet, 5 * 60 * 1000);
+  // keep the "today" highlight correct if the page stays open past midnight
+  setInterval(render, 60 * 1000);
+}
+
+init();
+</script>
+</body>
+</html>
