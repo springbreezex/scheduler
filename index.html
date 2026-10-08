@@ -291,7 +291,7 @@ function machineZoneLabel() {
   const hh = Math.floor(a / 60), mm = a % 60;
   let name = '';
   try { name = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* ignore */ }
-  return 'My machine time (UTC' + sign + hh + (mm ? ':' + pad2(mm) : '') + (name ? ', ' + name : '') + ')';
+  return '本地時間 (UTC' + sign + hh + (mm ? ':' + pad2(mm) : '') + (name ? ', ' + name : '') + ')';
 }
 
 function setMode(mode) {
