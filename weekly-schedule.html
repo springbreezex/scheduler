@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekly Schedule</title>
+<!--
+  SETUP: save your background picture next to this file as  background.jpg  (or .png / .webp).
+  DATA : reads the Google Sheet below (keep it shared as "anyone with the link can view").
+         Columns used: Year, Month, Day, Hour, Minute, Event, Web color code.
+  TIP  : add ?date=2026-11-25 to the address to preview any week.
+  The page is a fixed 1920x1080 stage that scales to the window; the "Save as PNG"
+  button exports exactly that stage (the button itself is not part of the picture).
+-->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#06121f}
+  body{font-family:"Inter","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;color:#f4f8ff}
+
+  #stage{
+    position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center center;overflow:hidden;
+    background:
+      linear-gradient(90deg,rgba(4,12,26,0) 0%,rgba(4,12,26,0) 45%,rgba(4,12,26,.6) 62%,rgba(4,12,26,.82) 100%),
+      url("background.jpg") left center/cover no-repeat,
+      url("background.png") left center/cover no-repeat,
+      url("background.webp") left center/cover no-repeat,
+      radial-gradient(circle at 20% 20%,#2a6f93 0%,#123a57 45%,#08172a 100%);
+  }
+  #overlay{position:absolute;inset:0;z-index:5;pointer-events:none;background:url("overlay.png") left center/cover no-repeat}
+  #panel{position:absolute;left:940px;top:36px;width:940px;height:1008px;display:flex;flex-direction:column;gap:16px}
+
+  header{
+    flex:none;height:150px;padding:0 30px;border-radius:22px;
+    display:flex;flex-direction:column;justify-content:center;
+    background:rgba(10,24,44,.74);border:1px solid rgba(190,220,255,.22);
+  }
+  .eyebrow{font-size:16px;line-height:19px;font-weight:600;letter-spacing:5px;text-transform:uppercase;color:#7fd4ff}
+  h1{margin-top:6px;font-size:54px;line-height:59px;font-weight:700}
+  .range{margin-top:6px;font-size:22px;line-height:26px;color:#a9bcd6}
+
+  #grid{flex:1;display:flex;flex-direction:column;gap:10px}
+  .day{position:relative;flex:1;display:flex;border-radius:18px;overflow:hidden;background:rgba(10,24,44,.62)}
+  .day::after{content:"";position:absolute;inset:0;border-radius:inherit;border:2px solid var(--bc);pointer-events:none}
+  .dhead{position:relative;flex:0 0 230px;padding:0 14px 0 24px;border-right:1px solid rgba(190,220,255,.22);background:rgba(255,255,255,.06);
+         display:flex;flex-direction:column;justify-content:center}
+  .dow{font-size:16px;line-height:20px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#7fd4ff}
+  .dow.we{color:#ffb4a6}
+  .dnum{margin-top:2px;display:flex;align-items:baseline;gap:8px;height:56px}
+  .dnum b{font-size:50px;line-height:56px;font-weight:700}
+  .dnum span{font-size:20px;color:#a9bcd6}
+  .badge{position:absolute;top:16px;right:12px;height:22px;line-height:22px;padding:0 10px;border-radius:999px;
+         background:#ffd27a;color:#2a1d00;font-size:12px;font-weight:800;letter-spacing:1px}
+
+  .events{flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .empty{padding-left:10px;font-size:22px;color:rgba(169,188,214,.6);letter-spacing:2px}
+  .ev{position:relative;flex:1;display:flex;align-items:center;gap:20px;padding:0 20px 0 24px;border-radius:12px}
+  .ev::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:5px;border-radius:0 3px 3px 0;background:var(--bar)}
+  .time{flex:none;min-width:104px;font-size:38px;font-weight:700;font-variant-numeric:tabular-nums}
+  .time.allday{font-size:15px;letter-spacing:2px;font-weight:700;opacity:.9}
+  .title{flex:1;min-width:0;font-size:28px;line-height:1.25;font-weight:600;word-break:break-all}
+
+  /* controls live outside the stage, so they never appear in the exported picture */
+  #save{
+    position:fixed;left:20px;bottom:20px;z-index:10;font:inherit;font-size:14px;color:#f4f8ff;cursor:pointer;
+    padding:10px 18px;border-radius:999px;border:1px solid rgba(190,220,255,.4);background:rgba(10,24,44,.7);
+  }
+  #save:hover{background:rgba(127,212,255,.3);border-color:#7fd4ff}
+  #note{position:fixed;left:20px;bottom:64px;z-index:10;max-width:360px;font-size:12px;color:#cfe3f7;background:rgba(10,24,44,.8);padding:6px 10px;border-radius:8px;display:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="panel">
+    <header>
+      <div class="eyebrow" id="eyebrow"></div>
+      <h1>本週行程</h1>
+      <div class="range" id="range"></div>
+    </header>
+    <main id="grid"></main>
+  </div>
+  <div id="overlay"></div>
+</div>
+<button id="save">⬇ Save as PNG</button>
+<div id="note"></div>
+<input type="file" id="pick" accept="image/*" multiple hidden>
+
+<script>
+/* ---------- config ---------- */
+const SHEET_ID = "17AcX0UeMU1S5UJJ5amw5gSDvbgm0F1CsSjEXfNJGQd8";
+const SHEET_GID = "0";
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${SHEET_GID}`;
+const FONT = '"Inter","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+
+/* Snapshot of the sheet (used only if the live sheet can't be reached).
+   [Year, Month, Day, Hour, Minute, Event, Color] */
+const SNAPSHOT = [
+[2026,10,9,21,0,"重量級2F","7C0A02"],[2026,10,11,21,0,"重量級2F","7C0A02"],
+[2026,10,14,21,0,"重量級3F","7C0A02"],[2026,10,16,21,0,"重量級3F","7C0A02"],[2026,10,17,21,0,"重量級3F","7C0A02"],
+[2026,10,15,"","","小E請假","595959"],
+[2026,10,18,23,0,"重量級4F","7C0A02"],[2026,10,19,21,0,"重量級4F","7C0A02"],[2026,10,20,21,0,"重量級4F","7C0A02"],
+[2026,10,21,21,0,"重量級4F","7C0A02"],[2026,10,22,21,0,"重量級4F","7C0A02"],
+[2026,10,23,"","","魚丸&橙請假","595959"],[2026,10,24,"","","魚丸&橙請假","595959"],[2026,10,25,"","","魚丸&橙請假","595959"],
+[2026,10,26,"","","魚丸&橙請假","595959"],[2026,10,27,"","","魚丸&橙請假","595959"],[2026,10,28,"","","魚丸&橙請假","595959"],
+[2026,10,30,"","","小千請假","595959"],[2026,10,31,"","","小千請假","595959"],[2026,11,1,"","","小千請假","595959"],[2026,11,2,"","","小千請假","595959"],
+[2026,11,6,"","","魚丸請假","595959"],[2026,11,7,"","","魚丸請假","595959"],
+[2026,11,10,21,0,"重量級4F (小E請假 小雷代班)","7C0A02"],[2026,11,12,21,0,"重量級4F(通) (小E請假 小雷代班)","7C0A02"],
+[2026,11,13,21,0,"小丑 (小E請假 小雷代班)","AF69EF"],
+[2026,11,14,21,0,"小丑 (目標見P2)","AF69EF"],
+[2026,11,15,21,0,"小丑 (目標練熟P2)","AF69EF"],
+[2026,11,17,21,30,"小丑 (目標練熟P2)","AF69EF"],
+[2026,11,19,21,0,"小丑 (目標練熟P2)","AF69EF"],
+[2026,11,21,21,0,"小丑 (目標練熟P2)","AF69EF"],
+[2026,11,22,22,0,"小丑 (目標練熟P2)","AF69EF"],
+[2026,11,25,21,0,"小丑 (目標練熟P3前半)","AF69EF"],
+[2026,11,26,21,0,"小丑 (目標練熟P3前半+練後半)","AF69EF"],
+[2026,11,27,21,0,"小丑 (目標練P3後半)","AF69EF"],
+[2026,11,28,21,0,"小丑 (目標練熟P3後半)","AF69EF"]
+];
+
+/* ---------- helpers ---------- */
+const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const DOW_ZH = ["週一","週二","週三","週四","週五","週六","週日"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pad = n => String(n).padStart(2,"0");
+const keyOf = (y,m,d) => `${y}-${pad(m)}-${pad(d)}`;
+const esc = s => s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function parseCSV(text){
+  const rows=[];let row=[],cell="",q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){cell+='"';i++} else q=false } else cell+=c; }
+    else if(c==='"') q=true;
+    else if(c===","){row.push(cell);cell=""}
+    else if(c==="\n"){row.push(cell);rows.push(row);row=[];cell=""}
+    else if(c!=="\r") cell+=c;
+  }
+  if(cell||row.length){row.push(cell);rows.push(row)}
+  return rows;
+}
+function rowsToEvents(rows){
+  if(!rows.length) return [];
+  const head = rows[0].map(h=>h.trim().toLowerCase());
+  const idx = n => head.indexOf(n);
+  const iY=idx("year"),iM=idx("month"),iD=idx("day"),iH=idx("hour"),iMin=idx("minute"),iE=idx("event"),iC=idx("web color code");
+  return rows.slice(1).map(r=>({
+    y:+r[iY],m:+r[iM],d:+r[iD],
+    h:(r[iH]??"").trim()===""?null:+r[iH],
+    min:(r[iMin]??"").trim()===""?0:+r[iMin],
+    title:(r[iE]||"").trim(),
+    color:(r[iC]||"").trim().replace("#","")
+  })).filter(e=>e.y&&e.m&&e.d&&e.title);
+}
+const snapshotEvents = () => SNAPSHOT.map(r=>({y:r[0],m:r[1],d:r[2],h:r[3]===""?null:r[3],min:r[4]===""?0:r[4],title:r[5],color:r[6]}));
+
+function mondayOf(date){
+  const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+  d.setDate(d.getDate()-((d.getDay()+6)%7));
+  return d;
+}
+
+/* colour helpers (shared by the page and the PNG export) */
+const hex2rgb = h => [0,2,4].map(i=>parseInt(h.substr(i,2),16));
+const mix = (a,b,t) => a.map((v,i)=>Math.round(v*t+b[i]*(1-t)));   // t = share of a
+const rgb = a => `rgb(${a.join(",")})`;
+function evColors(hex){
+  const c = /^[0-9a-f]{6}$/i.test(hex) ? hex2rgb(hex) : [127,212,255];
+  const base=[10,24,40], white=[255,255,255];
+  return {c1:rgb(mix(c,base,.62)), c2:rgb(mix(c,base,.34)), border:rgb(mix(c,white,.85)), bar:rgb(mix(c,white,.4))};
+}
+
+/* ---------- model ---------- */
+let EVENTS = [];
+let baseDate = new Date();
+const qp = new URLSearchParams(location.search).get("date");
+if(qp && /^\d{4}-\d{2}-\d{2}$/.test(qp)){ const [y,m,d]=qp.split("-").map(Number); baseDate=new Date(y,m-1,d); }
+
+function model(){
+  const now = new Date();
+  const todayKey = keyOf(now.getFullYear(),now.getMonth()+1,now.getDate());
+  const start = mondayOf(baseDate);
+  const days = [...Array(7)].map((_,i)=>{
+    const d=new Date(start); d.setDate(start.getDate()+i);
+    const k=keyOf(d.getFullYear(),d.getMonth()+1,d.getDate());
+    const events = EVENTS.filter(e=>keyOf(e.y,e.m,e.d)===k)
+      .sort((a,b)=>(a.h===null?-1:a.h*60+a.min)-(b.h===null?-1:b.h*60+b.min))
+      .map(e=>({t:e.h===null?null:`${pad(e.h)}:${pad(e.min)}`,title:e.title,col:evColors(e.color)}));
+    return {i,num:d.getDate(),mon:MON[d.getMonth()],isToday:k===todayKey,events};
+  });
+  const end = new Date(start); end.setDate(start.getDate()+6);
+  const same = start.getMonth()===end.getMonth();
+  return {
+    eyebrow:`${start.getFullYear()} · Weekly Schedule`,
+    range: same ? `${MON[start.getMonth()]} ${start.getDate()} – ${end.getDate()}, ${end.getFullYear()}`
+                : `${MON[start.getMonth()]} ${start.getDate()} – ${MON[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`,
+    startKey:keyOf(start.getFullYear(),start.getMonth()+1,start.getDate()),
+    days
+  };
+}
+
+/* ---------- page render ---------- */
+function render(){
+  const m = model();
+  document.getElementById("eyebrow").textContent = m.eyebrow;
+  document.getElementById("range").textContent = m.range;
+  document.getElementById("grid").innerHTML = m.days.map(d=>{
+    const evs = d.events.length ? d.events.map(e=>{
+      const t = e.t===null ? `<div class="time allday">ALL DAY</div>` : `<div class="time">${e.t}</div>`;
+      return `<div class="ev" style="background:linear-gradient(135deg,${e.col.c1},${e.col.c2});box-shadow:inset 0 0 0 1px ${e.col.border};--bar:${e.col.bar}">${t}<div class="title">${esc(e.title)}</div></div>`;
+    }).join("") : `<div class="empty">— 無行程 —</div>`;
+    return `<section class="day" style="--bc:${d.isToday?"#ffd27a":"rgba(190,220,255,.22)"}">
+      <div class="dhead">
+        <div class="dow ${d.i>=5?"we":""}">${DOW[d.i]} · ${DOW_ZH[d.i]}</div>
+        <div class="dnum"><b>${d.num}</b><span>${d.mon}</span></div>
+        ${d.isToday?'<span class="badge">TODAY</span>':""}
+      </div>
+      <div class="events">${evs}</div>
+    </section>`;
+  }).join("");
+}
+
+function fit(){
+  const s = Math.min(innerWidth/1920, innerHeight/1080);
+  document.getElementById("stage").style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+addEventListener("resize",fit); fit();
+
+/* ---------- PNG export (draws the same layout on a 1920x1080 canvas) ---------- */
+const rr = (ctx,x,y,w,h,r)=>{ctx.beginPath();ctx.roundRect(x,y,w,h,r)};
+const setLS = (ctx,v)=>{ try{ctx.letterSpacing=v}catch(e){} };
+
+function wrapText(ctx,text,maxW){
+  const lines=[];let cur="";
+  for(const ch of text){
+    if(cur && ctx.measureText(cur+ch).width>maxW){lines.push(cur);cur=ch}else cur+=ch;
+  }
+  if(cur) lines.push(cur);
+  return lines;
+}
+
+function draw(ctx,img,m,ov){
+  const W=1920,H=1080;
+  /* background */
+  if(img){
+    const s=Math.max(W/img.width,H/img.height), dh=img.height*s;
+    ctx.drawImage(img,0,(H-dh)/2,img.width*s,dh);
+  }else{
+    const g=ctx.createRadialGradient(W*.2,H*.2,0,W*.2,H*.2,Math.hypot(W*.8,H*.8));
+    g.addColorStop(0,"#2a6f93");g.addColorStop(.45,"#123a57");g.addColorStop(1,"#08172a");
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  }
+  const shade=ctx.createLinearGradient(0,0,W,0);
+  shade.addColorStop(0,"rgba(4,12,26,0)");shade.addColorStop(.45,"rgba(4,12,26,0)");
+  shade.addColorStop(.62,"rgba(4,12,26,.6)");shade.addColorStop(1,"rgba(4,12,26,.82)");
+  ctx.fillStyle=shade;ctx.fillRect(0,0,W,H);
+
+  const PX=1040,PY=36,PW=840,HH=150,GAP=16,RG=10,DH=230;
+  ctx.textAlign="left";ctx.textBaseline="middle";
+
+  /* header */
+  rr(ctx,PX,PY,PW,HH,22);ctx.fillStyle="rgba(10,24,44,.74)";ctx.fill();
+  rr(ctx,PX+.5,PY+.5,PW-1,HH-1,21.5);ctx.strokeStyle="rgba(190,220,255,.22)";ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle="#7fd4ff";ctx.font=`600 16px ${FONT}`;setLS(ctx,"5px");
+  ctx.fillText(m.eyebrow.toUpperCase(),PX+30,PY+17+9.5);
+  setLS(ctx,"0px");
+  ctx.fillStyle="#f4f8ff";ctx.font=`700 54px ${FONT}`;ctx.fillText("本週行程",PX+30,PY+17+19+6+29.5);
+  ctx.fillStyle="#a9bcd6";ctx.font=`400 22px ${FONT}`;ctx.fillText(m.range,PX+30,PY+17+19+6+59+6+13);
+
+  /* rows */
+  const rowsTop=PY+HH+GAP, rowsH=1008-HH-GAP, rowH=(rowsH-RG*6)/7;
+  m.days.forEach((d,i)=>{
+    const x=PX, y=rowsTop+i*(rowH+RG);
+    ctx.save();
+    rr(ctx,x,y,PW,rowH,18);ctx.fillStyle="rgba(10,24,44,.62)";ctx.fill();ctx.clip();
+    ctx.fillStyle="rgba(255,255,255,.06)";ctx.fillRect(x,y,DH,rowH);
+    ctx.fillStyle="rgba(190,220,255,.22)";ctx.fillRect(x+DH-1,y,1,rowH);
+    ctx.restore();
+
+    /* day block */
+    const off=(rowH-78)/2;
+    ctx.textBaseline="middle";
+    ctx.fillStyle=d.i>=5?"#ffb4a6":"#7fd4ff";ctx.font=`600 16px ${FONT}`;setLS(ctx,"2px");
+    ctx.fillText(`${DOW[d.i].toUpperCase()} · ${DOW_ZH[d.i]}`,x+24,y+off+10);
+    setLS(ctx,"0px");
+    ctx.textBaseline="alphabetic";
+    const nb=y+off+20+2+28+18;
+    ctx.fillStyle="#f4f8ff";ctx.font=`700 50px ${FONT}`;ctx.fillText(String(d.num),x+24,nb);
+    const nw=ctx.measureText(String(d.num)).width;
+    ctx.fillStyle="#a9bcd6";ctx.font=`400 20px ${FONT}`;ctx.fillText(d.mon,x+24+nw+8,nb);
+    ctx.textBaseline="middle";
+    if(d.isToday){
+      ctx.font=`800 12px ${FONT}`;setLS(ctx,"1px");
+      const bw=ctx.measureText("TODAY").width+20;
+      rr(ctx,x+DH-12-bw,y+16,bw,22,11);ctx.fillStyle="#ffd27a";ctx.fill();
+      ctx.fillStyle="#2a1d00";ctx.fillText("TODAY",x+DH-12-bw+10,y+27);
+      setLS(ctx,"0px");
+    }
+
+    /* events */
+    const ex=x+DH+14, ew=PW-DH-28, ey=y+10, eh=rowH-20;
+    if(!d.events.length){
+      ctx.fillStyle="rgba(169,188,214,.6)";ctx.font=`400 22px ${FONT}`;setLS(ctx,"2px");
+      ctx.fillText("— 無行程 —",ex+10,y+rowH/2);setLS(ctx,"0px");
+    }else{
+      const n=d.events.length, h=(eh-6*(n-1))/n;
+      d.events.forEach((e,k)=>{
+        const top=ey+k*(h+6), cy=top+h/2;
+        const g=ctx.createLinearGradient(ex,top,ex+ew,top+h);
+        g.addColorStop(0,e.col.c1);g.addColorStop(1,e.col.c2);
+        rr(ctx,ex,top,ew,h,12);ctx.fillStyle=g;ctx.fill();
+        rr(ctx,ex+.5,top+.5,ew-1,h-1,11.5);ctx.strokeStyle=e.col.border;ctx.lineWidth=1;ctx.stroke();
+        ctx.beginPath();ctx.roundRect(ex,top+12,5,h-24,[0,3,3,0]);ctx.fillStyle=e.col.bar;ctx.fill();
+        ctx.fillStyle="#f4f8ff";
+        if(e.t===null){
+          ctx.globalAlpha=.9;ctx.font=`700 15px ${FONT}`;setLS(ctx,"2px");ctx.fillText("ALL DAY",ex+24,cy);setLS(ctx,"0px");ctx.globalAlpha=1;
+        }else{
+          ctx.font=`700 38px ${FONT}`;ctx.fillText(e.t,ex+24,cy);
+        }
+        ctx.font=`600 28px ${FONT}`;
+        const tx=ex+24+104+20, lines=wrapText(ctx,e.title,ew-(24+104+20)-20), lh=35;
+        lines.forEach((ln,j)=>ctx.fillText(ln,tx,cy-lines.length*lh/2+lh/2+j*lh));
+      });
+    }
+    /* row border */
+    rr(ctx,x+1,y+1,PW-2,rowH-2,17);ctx.strokeStyle=d.isToday?"#ffd27a":"rgba(190,220,255,.22)";ctx.lineWidth=2;ctx.stroke();
+  });
+
+  /* decorative overlay on top of everything (same sizing as the background) */
+  if(ov){
+    const s=Math.max(W/ov.width,H/ov.height), dh=ov.height*s;
+    ctx.drawImage(ov,0,(H-dh)/2,ov.width*s,dh);
+  }
+}
+
+let picked=null, pickedOv=null, prompted=false;
+const tryLoad = src => new Promise(res=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src=src});
+async function loadBg(){
+  if(picked) return picked;
+  for(const f of ["background.jpg","background.png","background.webp"]){ const im=await tryLoad(f); if(im) return im; }
+  return null;
+}
+async function loadOv(){ return pickedOv || await tryLoad("overlay.png"); }
+function note(msg){const n=document.getElementById("note");n.textContent=msg;n.style.display=msg?"block":"none"}
+
+async function exportPNG(){
+  note("");
+  await document.fonts.ready;
+  const m=model(), img=await loadBg(), ov=await loadOv();
+  const c=document.createElement("canvas");c.width=1920;c.height=1080;
+  draw(c.getContext("2d"),img,m,ov);
+  try{
+    const blob=await new Promise((res,rej)=>{try{c.toBlob(b=>b?res(b):rej(new Error("empty image")),"image/png")}catch(e){rej(e)}});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`weekly-schedule_${m.startKey}.png`;
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  }catch(e){
+    if(e.name==="SecurityError" && !prompted){
+      prompted=true;
+      note("Your browser blocks reading local image files. Please select background.jpg and overlay.png together (Ctrl/Cmd-click) to finish saving.");
+      document.getElementById("pick").click();
+    }else note("Export failed: "+e.message);
+  }
+}
+document.getElementById("save").onclick=exportPNG;
+document.getElementById("pick").onchange=async e=>{
+  const files=[...e.target.files]; if(!files.length) return;
+  for(const f of files){
+    const im=await tryLoad(URL.createObjectURL(f)); if(!im) continue;
+    if(f.name.toLowerCase().includes("overlay")) pickedOv=im; else picked=im;
+  }
+  e.target.value="";
+  exportPNG();
+};
+
+/* ---------- load data ---------- */
+async function load(){
+  try{
+    const res = await fetch(CSV_URL,{cache:"no-store"});
+    if(!res.ok) throw new Error(res.status);
+    EVENTS = rowsToEvents(parseCSV(await res.text()));
+  }catch(err){
+    EVENTS = snapshotEvents();
+    note("Couldn't reach the live sheet – showing the saved snapshot.");
+  }
+  render();
+}
+EVENTS = snapshotEvents(); render();   // instant first paint
+load();
+</script>
+</body>
+</html>
