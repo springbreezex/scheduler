@@ -4,14 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weekly Schedule</title>
-<!--
-  SETUP: save your background picture next to this file as  background.jpg  (or .png / .webp).
-  DATA : reads the Google Sheet below (keep it shared as "anyone with the link can view").
-         Columns used: Year, Month, Day, Hour, Minute, Event, Web color code.
-  TIP  : add ?date=2026-11-25 to the address to preview any week.
-  The page is a fixed 1920x1080 stage that scales to the window; the "Save as PNG"
-  button exports exactly that stage (the button itself is not part of the picture).
--->
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:100%;height:100%;overflow:hidden;background:#06121f}
@@ -254,7 +246,7 @@ function draw(ctx,img,m,ov){
   shade.addColorStop(.62,"rgba(4,12,26,.6)");shade.addColorStop(1,"rgba(4,12,26,.82)");
   ctx.fillStyle=shade;ctx.fillRect(0,0,W,H);
 
-  const PX=1040,PY=36,PW=840,HH=150,GAP=16,RG=10,DH=230;
+  const PX=940,PY=36,PW=940,HH=150,GAP=16,RG=10,DH=230;
   ctx.textAlign="left";ctx.textBaseline="middle";
 
   /* header */
