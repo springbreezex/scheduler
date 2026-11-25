@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weekly Schedule</title>
+
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:100%;height:100%;overflow:hidden;background:#06121f}
@@ -11,14 +12,9 @@
 
   #stage{
     position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center center;overflow:hidden;
-    background:
-      linear-gradient(90deg,rgba(4,12,26,0) 0%,rgba(4,12,26,0) 45%,rgba(4,12,26,.6) 62%,rgba(4,12,26,.82) 100%),
-      url("background.jpg") left center/cover no-repeat,
-      url("background.png") left center/cover no-repeat,
-      url("background.webp") left center/cover no-repeat,
-      radial-gradient(circle at 20% 20%,#2a6f93 0%,#123a57 45%,#08172a 100%);
+    background:radial-gradient(circle at 20% 20%,#2a6f93 0%,#123a57 45%,#08172a 100%);
   }
-  #overlay{position:absolute;inset:0;z-index:5;pointer-events:none;background:url("overlay.png") left center/cover no-repeat}
+  #overlay{position:absolute;inset:0;z-index:5;pointer-events:none;background-position:left center;background-size:cover;background-repeat:no-repeat}
   #panel{position:absolute;left:940px;top:36px;width:940px;height:1008px;display:flex;flex-direction:column;gap:16px}
 
   header{
@@ -58,6 +54,12 @@
   }
   #save:hover{background:rgba(127,212,255,.3);border-color:#7fd4ff}
   #note{position:fixed;left:20px;bottom:64px;z-index:10;max-width:360px;font-size:12px;color:#cfe3f7;background:rgba(10,24,44,.8);padding:6px 10px;border-radius:8px;display:none}
+  #controls{position:fixed;left:20px;bottom:20px;z-index:10;display:flex;align-items:center;gap:10px}
+  #save{position:static}
+  #sets{display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid rgba(190,220,255,.4);background:rgba(10,24,44,.7)}
+  #sets button{font:inherit;font-size:14px;font-weight:600;min-width:34px;padding:6px 12px;border-radius:999px;border:0;color:#cfe3f7;background:transparent;cursor:pointer}
+  #sets button:hover{background:rgba(127,212,255,.25)}
+  #sets button.on{background:#7fd4ff;color:#06121f}
 </style>
 </head>
 <body>
@@ -72,7 +74,7 @@
   </div>
   <div id="overlay"></div>
 </div>
-<button id="save">⬇ Save as PNG</button>
+<div id="controls"><button id="save">⬇ Save as PNG</button><div id="sets" title="Switch background"></div></div>
 <div id="note"></div>
 <input type="file" id="pick" accept="image/*" multiple hidden>
 
@@ -86,27 +88,7 @@ const FONT = '"Inter","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-ser
 /* Snapshot of the sheet (used only if the live sheet can't be reached).
    [Year, Month, Day, Hour, Minute, Event, Color] */
 const SNAPSHOT = [
-[2026,10,9,21,0,"重量級2F","7C0A02"],[2026,10,11,21,0,"重量級2F","7C0A02"],
-[2026,10,14,21,0,"重量級3F","7C0A02"],[2026,10,16,21,0,"重量級3F","7C0A02"],[2026,10,17,21,0,"重量級3F","7C0A02"],
-[2026,10,15,"","","小E請假","595959"],
-[2026,10,18,23,0,"重量級4F","7C0A02"],[2026,10,19,21,0,"重量級4F","7C0A02"],[2026,10,20,21,0,"重量級4F","7C0A02"],
-[2026,10,21,21,0,"重量級4F","7C0A02"],[2026,10,22,21,0,"重量級4F","7C0A02"],
-[2026,10,23,"","","魚丸&橙請假","595959"],[2026,10,24,"","","魚丸&橙請假","595959"],[2026,10,25,"","","魚丸&橙請假","595959"],
-[2026,10,26,"","","魚丸&橙請假","595959"],[2026,10,27,"","","魚丸&橙請假","595959"],[2026,10,28,"","","魚丸&橙請假","595959"],
-[2026,10,30,"","","小千請假","595959"],[2026,10,31,"","","小千請假","595959"],[2026,11,1,"","","小千請假","595959"],[2026,11,2,"","","小千請假","595959"],
-[2026,11,6,"","","魚丸請假","595959"],[2026,11,7,"","","魚丸請假","595959"],
-[2026,11,10,21,0,"重量級4F (小E請假 小雷代班)","7C0A02"],[2026,11,12,21,0,"重量級4F(通) (小E請假 小雷代班)","7C0A02"],
-[2026,11,13,21,0,"小丑 (小E請假 小雷代班)","AF69EF"],
-[2026,11,14,21,0,"小丑 (目標見P2)","AF69EF"],
-[2026,11,15,21,0,"小丑 (目標練熟P2)","AF69EF"],
-[2026,11,17,21,30,"小丑 (目標練熟P2)","AF69EF"],
-[2026,11,19,21,0,"小丑 (目標練熟P2)","AF69EF"],
-[2026,11,21,21,0,"小丑 (目標練熟P2)","AF69EF"],
-[2026,11,22,22,0,"小丑 (目標練熟P2)","AF69EF"],
-[2026,11,25,21,0,"小丑 (目標練熟P3前半)","AF69EF"],
-[2026,11,26,21,0,"小丑 (目標練熟P3前半+練後半)","AF69EF"],
-[2026,11,27,21,0,"小丑 (目標練P3後半)","AF69EF"],
-[2026,11,28,21,0,"小丑 (目標練熟P3後半)","AF69EF"]
+[2026,11,28,21,0,"404","AF69EF"]
 ];
 
 /* ---------- helpers ---------- */
@@ -324,30 +306,26 @@ function draw(ctx,img,m,ov){
   }
 }
 
-let picked=null, pickedOv=null, prompted=false;
+let picked={}, prompted=false, SETS=[], cur=0;
+const baseName = u => u ? u.split("/").pop().toLowerCase() : "";
 const tryLoad = src => new Promise(res=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src=src});
-async function loadBg(){
-  if(picked) return picked;
-  for(const f of ["background.jpg","background.png","background.webp"]){ const im=await tryLoad(f); if(im) return im; }
-  return null;
-}
-async function loadOv(){ return pickedOv || await tryLoad("overlay.png"); }
 function note(msg){const n=document.getElementById("note");n.textContent=msg;n.style.display=msg?"block":"none"}
 
 async function exportPNG(){
   note("");
   await document.fonts.ready;
-  const m=model(), img=await loadBg(), ov=await loadOv();
+  const m=model(), set=SETS[cur]||{};
+  const img=picked[baseName(set.bgUrl)]||set.bgImg||null, ov=picked[baseName(set.ovUrl)]||set.ovImg||null;
   const c=document.createElement("canvas");c.width=1920;c.height=1080;
   draw(c.getContext("2d"),img,m,ov);
   try{
     const blob=await new Promise((res,rej)=>{try{c.toBlob(b=>b?res(b):rej(new Error("empty image")),"image/png")}catch(e){rej(e)}});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`weekly-schedule_${m.startKey}.png`;
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`weekly-schedule_${m.startKey}${set.id&&set.id!=="default"?"_"+set.id:""}.png`;
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }catch(e){
     if(e.name==="SecurityError" && !prompted){
       prompted=true;
-      note("Your browser blocks reading local image files. Please select background.jpg and overlay.png together (Ctrl/Cmd-click) to finish saving.");
+      note(`Your browser blocks reading local image files. Please select ${[set.bgUrl,set.ovUrl].filter(Boolean).join(" and ")} together (Ctrl/Cmd-click) to finish saving.`);
       document.getElementById("pick").click();
     }else note("Export failed: "+e.message);
   }
@@ -356,8 +334,7 @@ document.getElementById("save").onclick=exportPNG;
 document.getElementById("pick").onchange=async e=>{
   const files=[...e.target.files]; if(!files.length) return;
   for(const f of files){
-    const im=await tryLoad(URL.createObjectURL(f)); if(!im) continue;
-    if(f.name.toLowerCase().includes("overlay")) pickedOv=im; else picked=im;
+    const im=await tryLoad(URL.createObjectURL(f)); if(im) picked[f.name.toLowerCase()]=im;
   }
   e.target.value="";
   exportPNG();
@@ -375,7 +352,39 @@ async function load(){
   }
   render();
 }
+/* ---------- background / overlay sets ---------- */
+const LETTERS = "ABCDEFGHIJ".split("");
+async function resolveSet(id,bgList,ovList){
+  let bgImg=null,bgUrl=null,ovImg=null,ovUrl=null;
+  for(const u of bgList){ const im=await tryLoad(u); if(im){bgImg=im;bgUrl=u;break} }
+  for(const u of ovList){ const im=await tryLoad(u); if(im){ovImg=im;ovUrl=u;break} }
+  return {id,bgImg,bgUrl,ovImg,ovUrl};
+}
+function applySet(i){
+  cur=i; prompted=false; const s=SETS[i];
+  document.getElementById("stage").style.background =
+    `linear-gradient(90deg,rgba(4,12,26,0) 0%,rgba(4,12,26,0) 45%,rgba(4,12,26,.6) 62%,rgba(4,12,26,.82) 100%),`+
+    (s.bgUrl?`url("${s.bgUrl}") left center/cover no-repeat,`:"")+
+    `radial-gradient(circle at 20% 20%,#2a6f93 0%,#123a57 45%,#08172a 100%)`;
+  document.getElementById("overlay").style.backgroundImage = s.ovUrl ? `url("${s.ovUrl}")` : "none";
+  [...document.getElementById("sets").children].forEach((b,j)=>b.classList.toggle("on",j===i));
+  try{localStorage.setItem("wsSet",s.id)}catch(e){}
+}
+async function initSets(){
+  const found=(await Promise.all(LETTERS.map(L=>resolveSet(L,[`${L}_background.png`],[`${L}_overlay.png`]))))
+    .filter(s=>s.bgImg||s.ovImg);
+  SETS = found.length ? found
+       : [await resolveSet("default",["background.jpg","background.png","background.webp"],["overlay.png"])];
+  const box=document.getElementById("sets");
+  box.innerHTML=SETS.map((s,i)=>`<button data-i="${i}" title="Background ${esc(s.id)}">${s.id==="default"?"●":esc(s.id)}</button>`).join("");
+  box.onclick=e=>{const b=e.target.closest("button"); if(b) applySet(+b.dataset.i)};
+  let saved=null; try{saved=localStorage.getItem("wsSet")}catch(e){}
+  const want=new URLSearchParams(location.search).get("set")||saved;
+  applySet(Math.max(0,SETS.findIndex(s=>s.id===want)));
+}
+
 EVENTS = snapshotEvents(); render();   // instant first paint
+initSets();
 load();
 </script>
 </body>
